@@ -28,6 +28,7 @@
 #include <sys/types.h>
 
 #include "sh_util.h"
+#include "sh_xdl.h"
 #include "xdl.h"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreserved-id-macro"
@@ -65,8 +66,8 @@ int sh_safe_init(void) {
   sh_safe_api_level = sh_util_get_api_level();
 
   // You can also use dlopen(), but dlopen() is more likely to have been hooked.
-  void *handle = xdl_open("libc.so", XDL_DEFAULT);
-  if (NULL == handle) return -1;
+  void *handle = sh_xdl_open("libc.so");
+  if (NULL == handle || SH_XDL_CRASH == handle) return -1;
 
   int r = -1;
   if (__predict_false(0 != sh_safe_init_func(handle, "pthread_getspecific", SH_SAFE_IDX_PTHREAD_GETSPECIFIC)))

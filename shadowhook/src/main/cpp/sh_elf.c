@@ -39,6 +39,7 @@
 #include "sh_sig.h"
 #include "sh_trampo.h"
 #include "sh_util.h"
+#include "sh_xdl.h"
 #include "shadowhook.h"
 #include "xdl.h"
 
@@ -283,8 +284,8 @@ static int sh_elf_get_gaps_from_phdr(sh_elf_t *self, sh_addr_info_t *addr_info) 
 }
 
 static void sh_elf_get_gaps_from_useless_symbols(sh_elf_t *self) {
-  void *handle = xdl_open(self->useless->lib_name, XDL_DEFAULT);
-  if (NULL == handle) return;
+  void *handle = sh_xdl_open(self->useless->lib_name);
+  if (NULL == handle || SH_XDL_CRASH == handle) return;
 
   uint8_t api_level = (uint8_t)sh_util_get_api_level();
 

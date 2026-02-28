@@ -37,6 +37,7 @@
 #include "sh_sig.h"
 #include "sh_switch.h"
 #include "sh_util.h"
+#include "sh_xdl.h"
 #include "shadowhook.h"
 #include "xdl.h"
 
@@ -176,8 +177,8 @@ int sh_linker_register_dlopen_post_callback(sh_linker_dlopen_post_t post) {
   sh_linker_dlopen_post = post;
 
   // get dlinfo
-  void *handle = xdl_open(SH_LINKER_BASENAME, XDL_DEFAULT);
-  if (__predict_false(NULL == handle)) goto end;
+  void *handle = sh_xdl_open(SH_LINKER_BASENAME);
+  if (__predict_false(NULL == handle || SH_XDL_CRASH == handle)) goto end;
   xdl_info_t dlinfo;
   xdl_info(handle, XDL_DI_DLINFO, &dlinfo);
   xdl_close(handle);
@@ -617,8 +618,8 @@ static int sh_linker_get_symbol_info(sh_addr_info_t *call_ctors_addr_info,
                                      sh_addr_info_t *call_dtors_addr_info, pthread_mutex_t **g_dl_mutex) {
   int api_level = sh_util_get_api_level();
 
-  void *handle = xdl_open(SH_LINKER_BASENAME, XDL_DEFAULT);
-  if (__predict_false(NULL == handle)) return -1;
+  void *handle = sh_xdl_open(SH_LINKER_BASENAME);
+  if (__predict_false(NULL == handle || SH_XDL_CRASH == handle)) return -1;
   int r = -1;
 
   // check arch
@@ -850,20 +851,8 @@ int sh_linker_get_addr_info_by_name(sh_addr_info_t *addr_info, const char *lib_n
   memset(addr_info, 0, sizeof(sh_addr_info_t));
 
   // open library
-  bool crashed = false;
-  void *handle = NULL;
-  if (sh_util_get_api_level() >= __ANDROID_API_L__) {
-    handle = xdl_open(lib_name, XDL_DEFAULT);
-  } else {
-    SH_SIG_TRY(SIGSEGV, SIGBUS) {
-      handle = xdl_open(lib_name, XDL_DEFAULT);
-    }
-    SH_SIG_CATCH() {
-      crashed = true;
-    }
-    SH_SIG_EXIT
-  }
-  if (crashed) return SHADOWHOOK_ERRNO_HOOK_DLOPEN_CRASH;
+  void *handle = sh_xdl_open(lib_name);
+  if (SH_XDL_CRASH == handle) return SHADOWHOOK_ERRNO_HOOK_DLOPEN_CRASH;
   if (NULL == handle) return SHADOWHOOK_ERRNO_PENDING;
 
   // get dlinfo
@@ -877,23 +866,13 @@ int sh_linker_get_addr_info_by_name(sh_addr_info_t *addr_info, const char *lib_n
   }
 
   // lookup symbol address
-  crashed = false;
-  void *sym_addr = NULL;
   size_t sym_size = 0;
-  SH_SIG_TRY(SIGSEGV, SIGBUS) {
-    // do xdl_sym() or xdl_dsym() in an dlclosed-ELF will cause a crash
-    sym_addr = xdl_sym(handle, sym_name, &sym_size);
-    if (NULL == sym_addr) sym_addr = xdl_dsym(handle, sym_name, &sym_size);
-  }
-  SH_SIG_CATCH() {
-    crashed = true;
-  }
-  SH_SIG_EXIT
+  void *sym_addr = sh_xdl_sym(handle, sym_name, &sym_size);
 
   // close library
   xdl_close(handle);
 
-  if (crashed) return SHADOWHOOK_ERRNO_HOOK_DLSYM_CRASH;
+  if (SH_XDL_CRASH == sym_addr) return SHADOWHOOK_ERRNO_HOOK_DLSYM_CRASH;
   if (NULL == sym_addr) return SHADOWHOOK_ERRNO_HOOK_DLSYM;
 
   if (NULL == (addr_info->dli_fname = strdup(lib_name))) return SHADOWHOOK_ERRNO_OOM;
@@ -931,19 +910,9 @@ int sh_linker_get_addr_info_by_handle(sh_addr_info_t *addr_info, void **cached_h
   *cached_handle = handle;
 
   // lookup symbol address
-  bool crashed = false;
-  void *sym_addr = NULL;
   size_t sym_size = 0;
-  SH_SIG_TRY(SIGSEGV, SIGBUS) {
-    // do xdl_sym() or xdl_dsym() in an dlclosed-ELF will cause a crash
-    sym_addr = xdl_sym(handle, sym_name, &sym_size);
-    if (NULL == sym_addr) sym_addr = xdl_dsym(handle, sym_name, &sym_size);
-  }
-  SH_SIG_CATCH() {
-    crashed = true;
-  }
-  SH_SIG_EXIT
-  if (crashed) return SHADOWHOOK_ERRNO_HOOK_DLSYM_CRASH;
+  void *sym_addr = sh_xdl_sym(handle, sym_name, &sym_size);
+  if (SH_XDL_CRASH == sym_addr) return SHADOWHOOK_ERRNO_HOOK_DLSYM_CRASH;
   if (NULL == sym_addr) return SHADOWHOOK_ERRNO_HOOK_DLSYM;
 
   if (NULL != dlinfo.dli_fname) {

@@ -42,6 +42,7 @@
 #include "sh_switch.h"
 #include "sh_task.h"
 #include "sh_util.h"
+#include "sh_xdl.h"
 #include "xdl.h"
 
 #define GOTO_ERR(errnum) \
@@ -517,17 +518,10 @@ void shadowhook_dump_records(int fd, uint32_t item_flags) {
 }
 
 void *shadowhook_dlopen(const char *lib_name) {
-  void *handle = NULL;
-  if (SHADOWHOOK_ERRNO_OK != shadowhook_init_errno || sh_util_get_api_level() >= __ANDROID_API_L__) {
-    handle = xdl_open(lib_name, XDL_DEFAULT);
-  } else {
-    SH_SIG_TRY(SIGSEGV, SIGBUS) {
-      handle = xdl_open(lib_name, XDL_DEFAULT);
-    }
-    SH_SIG_CATCH() {
-      SH_LOG_WARN("shadowhook: dlopen crashed - %s", lib_name);
-    }
-    SH_SIG_EXIT
+  void *handle = sh_xdl_open(lib_name);
+  if (SH_XDL_CRASH == handle) {
+    SH_LOG_WARN("shadowhook: dlopen crashed - %s", lib_name);
+    handle = NULL;
   }
   return handle;
 }
@@ -537,39 +531,28 @@ void shadowhook_dlclose(void *handle) {
 }
 
 void *shadowhook_dlsym(void *handle, const char *sym_name) {
-  void *addr = shadowhook_dlsym_dynsym(handle, sym_name);
-  if (NULL == addr) addr = shadowhook_dlsym_symtab(handle, sym_name);
+  void *addr = sh_xdl_sym(handle, sym_name, NULL);
+  if (SH_XDL_CRASH == addr) {
+    SH_LOG_WARN("shadowhook: dlsym crashed - %p, %s", handle, sym_name);
+    addr = NULL;
+  }
   return addr;
 }
 
 void *shadowhook_dlsym_dynsym(void *handle, const char *sym_name) {
-  void *addr = NULL;
-  if (SHADOWHOOK_ERRNO_OK != shadowhook_init_errno) {
-    addr = xdl_sym(handle, sym_name, NULL);
-  } else {
-    SH_SIG_TRY(SIGSEGV, SIGBUS) {
-      addr = xdl_sym(handle, sym_name, NULL);
-    }
-    SH_SIG_CATCH() {
-      SH_LOG_WARN("shadowhook: dlsym_dynsym crashed - %p, %s", handle, sym_name);
-    }
-    SH_SIG_EXIT
+  void *addr = sh_xdl_sym_dynsym(handle, sym_name, NULL);
+  if (SH_XDL_CRASH == addr) {
+    SH_LOG_WARN("shadowhook: dlsym_dynsym crashed - %p, %s", handle, sym_name);
+    addr = NULL;
   }
   return addr;
 }
 
 void *shadowhook_dlsym_symtab(void *handle, const char *sym_name) {
-  void *addr = NULL;
-  if (SHADOWHOOK_ERRNO_OK != shadowhook_init_errno) {
-    addr = xdl_dsym(handle, sym_name, NULL);
-  } else {
-    SH_SIG_TRY(SIGSEGV, SIGBUS) {
-      addr = xdl_dsym(handle, sym_name, NULL);
-    }
-    SH_SIG_CATCH() {
-      SH_LOG_WARN("shadowhook: dlsym_symtab crashed - %p, %s", handle, sym_name);
-    }
-    SH_SIG_EXIT
+  void *addr = sh_xdl_sym_symtab(handle, sym_name, NULL);
+  if (SH_XDL_CRASH == addr) {
+    SH_LOG_WARN("shadowhook: dlsym_symtab crashed - %p, %s", handle, sym_name);
+    addr = NULL;
   }
   return addr;
 }
